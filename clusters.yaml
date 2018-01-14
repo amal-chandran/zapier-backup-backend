@@ -1,0 +1,7 @@
+- alias: hasura
+  config:
+    configmap: controller-conf
+    namespace: akin49-hasura
+  data: null
+  kubeContext: akin49
+  name: akin49
