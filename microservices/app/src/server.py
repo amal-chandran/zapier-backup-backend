@@ -59,7 +59,7 @@ def robots_txt():
 @app.route('/image')
 def get_image():
     """Return a static image."""
-    return send_file('static\hasura.jpg')
+    return send_file('static/hasura.jpg')
 
 
 @app.route('/input', methods=['GET', 'POST'])
