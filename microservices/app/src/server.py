@@ -1,8 +1,12 @@
 from src import app
 
 import requests
-from flask import jsonify, make_response, request, redirect, send_file, render_template
+from flask import jsonify, make_response, request, redirect, send_file, render_template, flash
 from collections import Counter
+
+UPLOAD_URL = 'https://filestore.akin49.hasura-app.io/v1/file'
+ZAP_URL = 'https://hooks.zapier.com/hooks/catch/2889414/80ktza/'
+ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif'}
 
 
 @app.route('/')
@@ -23,7 +27,7 @@ def get_author_post_count():
 
     author_dict = {author['id']: author for author in authors}  # hash author for faster access
 
-    author_post_count = Counter(post['userId'] for post in posts)   # count posts per userId
+    author_post_count = Counter(post['userId'] for post in posts)  # count posts per userId
 
     return jsonify([{'name': author_dict[item[0]]['name'], 'postCount': item[1]} for item in author_post_count.items()])
 
@@ -73,6 +77,43 @@ def input_text():
     if request.method == 'POST':
         app.logger.info('Input received: %s', request.form['text'])
     return render_template('input.html')
+
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def trigger_backup(file):
+    requests.post(ZAP_URL, files={'file': file})
+
+
+@app.route('/uploadfile', methods=['GET', 'POST'])
+def input_file():
+    # TODO: Remove GET flow from here and delete the template file after testing is done
+    # TODO: Add docs
+    """
+    """
+    if request.method == 'POST':
+        # check if the post request has the file part
+        if 'file' not in request.files:
+            flash('No file part')
+            return redirect(request.url)
+
+        file_storage = request.files['file']
+
+        # if user does not select file, browser also submit an empty part without filename
+        if file_storage.filename == '':
+            flash('No selected file')
+            return redirect(request.url)
+
+        if file_storage and allowed_file(file_storage.filename):
+            headers = {'Authorization': 'Bearer ab80e9309abd49c2591673f73bb0a1faba49a5f8f1b82e03'}
+            file = file_storage.read()
+            requests.post(UPLOAD_URL, headers=headers, files={'file': file},
+                          hooks={'response': lambda r, *args, **kwargs: trigger_backup(file)})
+        # TODO: try reading file back from Hasura and getting the image intact, once user flow is done
+
+    return render_template('file_upload.html')
 
 
 if __name__ == '__main__':
