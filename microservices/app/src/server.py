@@ -1,11 +1,15 @@
-from src import app
+from collections import Counter
 
 import requests
+import json
 from flask import jsonify, make_response, request, redirect, send_file, render_template, flash
-from collections import Counter
+from src import app
 
 UPLOAD_URL = 'https://filestore.akin49.hasura-app.io/v1/file'
 ZAP_URL = 'https://hooks.zapier.com/hooks/catch/2889414/80ktza/'
+SIGN_UP_URL = 'https://auth.akin49.hasura-app.io/v1/signup'
+LOGIN_URL = 'https://auth.akin49.hasura-app.io/v1/login'
+LOGOUT_URL = 'https://auth.akin49.hasura-app.io/v1/user/logout'
 ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif'}
 
 
@@ -84,15 +88,17 @@ def allowed_file(filename):
 
 
 def trigger_backup(file):
+    # TODO: Pass the username here, and configure zap to actually save the file in a folder named as current username
     requests.post(ZAP_URL, files={'file': file})
 
 
 @app.route('/uploadfile', methods=['GET', 'POST'])
 def input_file():
     # TODO: Remove GET flow from here and delete the template file after testing is done
-    # TODO: Add docs
-    """
-    """
+    auth_token = request.cookies.get('auth_token')
+    if not auth_token:
+        return make_response(json.dumps({'message': 'Cookie absent. User not logged in.'}))
+
     if request.method == 'POST':
         # check if the post request has the file part
         if 'file' not in request.files:
@@ -107,13 +113,63 @@ def input_file():
             return redirect(request.url)
 
         if file_storage and allowed_file(file_storage.filename):
-            headers = {'Authorization': 'Bearer ab80e9309abd49c2591673f73bb0a1faba49a5f8f1b82e03'}
+            headers = {'Authorization': 'Bearer ' + auth_token}
             file = file_storage.read()
             requests.post(UPLOAD_URL, headers=headers, files={'file': file},
                           hooks={'response': lambda r, *args, **kwargs: trigger_backup(file)})
-        # TODO: try reading file back from Hasura and getting the image intact, once user flow is done
+            return make_response(
+                json.dumps({'message': 'File has been uploaded and that the backup has been triggered.'}))
+        # TODO: try reading file back from Hasura and getting the image intact
 
     return render_template('file_upload.html')
+
+
+@app.route('/signup', methods=['GET', 'POST'])
+def sign_up():
+    if request.method == 'POST':
+        return requests.post(SIGN_UP_URL, json={
+            "provider": "username",
+            "data": {
+                "username": request.form['username'],
+                "password": request.form['password']
+            }
+        }).text
+
+    return render_template('sign_up.html')
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        internal_resp = requests.post(LOGIN_URL, json={
+            "provider": "username",
+            "data": {
+                "username": request.form['username'],
+                "password": request.form['password']
+            }
+        })
+        if not internal_resp.ok:
+            return make_response(json.dumps({'message': 'Invalid login. Try again'}))
+
+        response = make_response(internal_resp.text)
+        response.set_cookie('auth_token', internal_resp.json()['auth_token'])
+        return response
+
+    return render_template('login.html')
+
+
+@app.route('/logout', methods=['GET'])
+def logout():
+    auth_token = request.cookies.get('auth_token')
+    if not auth_token:
+        return make_response(json.dumps({'message': 'Cookie absent. User not logged in.'}))
+
+    headers = {'Authorization': 'Bearer ' + auth_token}
+    internal_resp = requests.post(LOGOUT_URL, headers=headers)
+
+    response = make_response(internal_resp.text)
+    response.set_cookie('auth_token', '', expires=0)  # expire the auth_token cookie
+    return response
 
 
 if __name__ == '__main__':
