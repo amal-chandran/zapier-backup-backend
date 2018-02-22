@@ -118,7 +118,7 @@ def input_file():
             requests.post(UPLOAD_URL, headers=headers, files={'file': file},
                           hooks={'response': lambda r, *args, **kwargs: trigger_backup(file)})
             return make_response(
-                json.dumps({'message': 'File has been uploaded and that the backup has been triggered.'}))
+                json.dumps({'message': 'File has been uploaded and backup has been triggered.'}))
         # TODO: try reading file back from Hasura and getting the image intact
 
     return render_template('file_upload.html')
