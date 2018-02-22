@@ -1,8 +1,8 @@
+import json
 from collections import Counter
 
 import requests
-import json
-from flask import jsonify, make_response, request, redirect, send_file, render_template, flash
+from flask import jsonify, make_response, request, redirect, send_file, render_template
 from src import app
 
 UPLOAD_URL = 'https://filestore.akin49.hasura-app.io/v1/file'
@@ -92,39 +92,37 @@ def trigger_backup(file):
     requests.post(ZAP_URL, files={'file': file})
 
 
-@app.route('/uploadfile', methods=['GET', 'POST'])
+@app.route('/uploadfile', methods=['POST'])
 def input_file():
-    # TODO: Remove GET flow from here and delete the template file after testing is done
     auth_token = request.cookies.get('auth_token')
     if not auth_token:
-        return make_response(json.dumps({'message': 'Cookie absent. User not logged in.'}))
+        return make_response(json.dumps({'message': 'Cookie absent. User not logged in.'}), 400)
 
-    if request.method == 'POST':
-        # check if the post request has the file part
-        if 'file' not in request.files:
-            flash('No file part')
-            return redirect(request.url)
+    # check if the post request has the file part
+    if 'file' not in request.files:
+        return make_response(json.dumps(
+            {'message': 'File part absent. Check if the post request has the file part with name `file`.'}), 400)
 
-        file_storage = request.files['file']
+    file_storage = request.files['file']
 
-        # if user does not select file, browser also submit an empty part without filename
-        if file_storage.filename == '':
-            flash('No selected file')
-            return redirect(request.url)
+    # if user does not select file, browser also submit an empty part without filename
+    if file_storage and file_storage.filename == '':
+        return make_response(json.dumps({'message': 'File or filename absent. Check if a file is uploaded.'}), 400)
 
-        if file_storage and allowed_file(file_storage.filename):
-            headers = {'Authorization': 'Bearer ' + auth_token}
-            file = file_storage.read()
-            requests.post(UPLOAD_URL, headers=headers, files={'file': file},
-                          hooks={'response': lambda r, *args, **kwargs: trigger_backup(file)})
-            return make_response(
-                json.dumps({'message': 'File has been uploaded and backup has been triggered.'}))
-        # TODO: try reading file back from Hasura and getting the image intact
+    if not allowed_file(file_storage.filename):
+        return make_response(json.dumps(
+            {'message': 'Invalid file extension. Supported extensions are: {}'.format(ALLOWED_EXTENSIONS)}), 400)
 
-    return render_template('file_upload.html')
+    headers = {'Authorization': 'Bearer ' + auth_token}
+    file = file_storage.read()
+    requests.post(UPLOAD_URL, headers=headers, files={'file': file},
+                  hooks={'response': lambda r, *args, **kwargs: trigger_backup(file)})
+    return make_response(
+        json.dumps({'message': 'File has been uploaded and backup has been triggered.'}))
+    # TODO: try reading file back from Hasura and getting the image intact
 
 
-@app.route('/signup', methods=['GET', 'POST'])
+# @app.route('/signup', methods=['GET', 'POST'])
 def sign_up():
     if request.method == 'POST':
         return requests.post(SIGN_UP_URL, json={
@@ -138,7 +136,7 @@ def sign_up():
     return render_template('sign_up.html')
 
 
-@app.route('/login', methods=['GET', 'POST'])
+# @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         internal_resp = requests.post(LOGIN_URL, json={
@@ -158,7 +156,7 @@ def login():
     return render_template('login.html')
 
 
-@app.route('/logout', methods=['GET'])
+# @app.route('/logout', methods=['GET'])
 def logout():
     auth_token = request.cookies.get('auth_token')
     if not auth_token:
